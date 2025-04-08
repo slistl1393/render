@@ -1,4 +1,3 @@
-import logging
 import os
 import cv2
 import numpy as np
@@ -14,12 +13,6 @@ from collections import defaultdict, Counter
 # FastAPI App initialisieren
 app = FastAPI()
 
-# Konfiguration des Loggings
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-
-logger.info("FastAPI-Anwendung gestartet")
-
 # Zugriff auf die Umgebungsvariablen
 openai_api_key = os.getenv("OPENAI_API_KEY")
 github_token = os.getenv("GITHUB_TOKEN")
@@ -30,12 +23,15 @@ if openai_api_key is None or github_token is None:
 
 # Funktion zum Bildverarbeiten und Erkennen von Symbolen
 def detect_symbols_with_balanced_filtering(image):
+    print("Starte Symbolerkennung...")
     _, thresh = cv2.threshold(image, 128, 255, cv2.THRESH_BINARY_INV)
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     bounding_boxes = [cv2.boundingRect(cnt) for cnt in contours]
+    print(f"Gefundene Bounding Boxes: {len(bounding_boxes)}")
     return bounding_boxes
 
 def classify_symbol_with_openai_from_image(image, box):
+    print(f"Verarbeite Symbol bei Box: {box}")
     x, y, w, h = box
     symbol = image[y:y+h, x:x+w]
     img_base64 = encode_image_to_base64(symbol)
@@ -43,6 +39,7 @@ def classify_symbol_with_openai_from_image(image, box):
     # OCR-Erkennung des Textes in der Nähe des Symbols
     text_area = image[y:y+h, x+w:x+w+2000]
     ocr_text = pytesseract.image_to_string(text_area).strip()
+    print(f"Erkannter OCR-Text: {ocr_text}")
 
     # OpenAI API Anfrage
     prompt = f'''
@@ -55,24 +52,25 @@ def classify_symbol_with_openai_from_image(image, box):
     Antworte mit: "verwenden" oder "ignorieren"
     '''
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt},
-        ],
-        max_tokens=10
-    )
-
-
-    decision = response['choices'][0]['message']['content'].strip().lower()
-    return {"entscheidung": decision, "ocr_text": ocr_text}
+    try:
+        response = openai.Completion.create(
+            model="gpt-4",
+            prompt=prompt,
+            max_tokens=10
+        )
+        decision = response.choices[0].text.strip().lower()
+        print(f"OpenAI Entscheidung: {decision}")
+        return {"entscheidung": decision, "ocr_text": ocr_text}
+    except Exception as e:
+        print(f"Fehler bei der OpenAI API: {e}")
+        return {"entscheidung": "error", "ocr_text": ocr_text}
 
 def encode_image_to_base64(image):
     _, buffer = cv2.imencode(".png", image)
     return base64.b64encode(buffer).decode("utf-8")
 
 def match_template_on_large_plan(plan_image, templates):
+    print("Starte Template-Matching auf Plan...")
     all_matches = []
 
     for template in templates:
@@ -85,45 +83,38 @@ def match_template_on_large_plan(plan_image, templates):
                 "confidence": float(result[pt[1], pt[0]]),
                 "bounding_box": [int(pt[0]), int(pt[1]), template.shape[1], template.shape[0]]
             })
-
+    
+    print(f"Gefundene Matches: {len(all_matches)}")
     return all_matches
 
 # POST-Endpunkt für den Empfang der Bilder
 @app.post("/upload/")
 async def upload_file(plan_image: UploadFile = File(...), verzeichnis_image: UploadFile = File(...)):
-    logger.info("Dateien zum Upload empfangen")
-    try:
-        plan_bytes = await plan_image.read()
-        verzeichnis_bytes = await verzeichnis_image.read()
-        logger.info("Bilder erfolgreich geladen")
+    print("Empfange Dateien...")
+    # Empfange die Bilddaten als Bytes und dekodiere sie
+    plan_bytes = await plan_image.read()
+    verzeichnis_bytes = await verzeichnis_image.read()
 
-        # Lese die Bytes in ein OpenCV-Bild
-        plan_image_cv = cv2.imdecode(np.frombuffer(plan_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
-        verzeichnis_image_cv = cv2.imdecode(np.frombuffer(verzeichnis_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
+    # Lese die Bytes in ein OpenCV-Bild
+    plan_image_cv = cv2.imdecode(np.frombuffer(plan_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
+    verzeichnis_image_cv = cv2.imdecode(np.frombuffer(verzeichnis_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
 
-        logger.info("Bilder erfolgreich in OpenCV-Format konvertiert")
+    # Verarbeite die Bilder
+    bounding_boxes = detect_symbols_with_balanced_filtering(verzeichnis_image_cv)
+    templates = []
 
-        # Weitere Verarbeitung...
-        bounding_boxes = detect_symbols_with_balanced_filtering(verzeichnis_image_cv)
-        logger.info(f"Anzahl der erkannten Bounding-Boxen: {len(bounding_boxes)}")
+    for box in bounding_boxes:
+        result = classify_symbol_with_openai_from_image(verzeichnis_image_cv, box)
+        if result["entscheidung"] == "verwenden":
+            x, y, w, h = box
+            template = verzeichnis_image_cv[y:y+h, x:x+w]
+            templates.append(template)
+            print(f"Template hinzugefügt: {template.shape}")
 
-        templates = []
-        for box in bounding_boxes:
-            result = classify_symbol_with_openai_from_image(verzeichnis_image_cv, box)
-            if result["entscheidung"] == "verwenden":
-                x, y, w, h = box
-                template = verzeichnis_image_cv[y:y+h, x:x+w]
-                templates.append(template)
+    # Starte das Matching des Plans auf die Templates
+    matches = match_template_on_large_plan(plan_image_cv, templates)
 
-        logger.info(f"{len(templates)} Templates werden verwendet")
+    # Ergebnisse zurückgeben
+    return {"status": "success", "matches": matches}
 
-        # Starte das Matching des Plans auf die Templates
-        matches = match_template_on_large_plan(plan_image_cv, templates)
-        logger.info(f"Anzahl der gefundenen Übereinstimmungen: {len(matches)}")
 
-        # Ergebnisse zurückgeben
-        return {"status": "success", "matches": matches}
-    
-    except Exception as e:
-        logger.error(f"Fehler beim Verarbeiten der Datei: {str(e)}")
-        raise e
