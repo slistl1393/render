@@ -58,7 +58,7 @@ def classify_symbol_with_openai_from_image(image, box):
     )
 
 
-    decision = response.choices[0].text.strip().lower()
+    decision = response['choices'][0]['message']['content'].strip().lower()
     return {"entscheidung": decision, "ocr_text": ocr_text}
 
 def encode_image_to_base64(image):
