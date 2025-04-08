@@ -1,3 +1,4 @@
+import logging
 import os
 import cv2
 import numpy as np
@@ -12,6 +13,12 @@ from collections import defaultdict, Counter
 
 # FastAPI App initialisieren
 app = FastAPI()
+
+# Konfiguration des Loggings
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+logger.info("FastAPI-Anwendung gestartet")
 
 # Zugriff auf die Umgebungsvariablen
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -84,32 +91,39 @@ def match_template_on_large_plan(plan_image, templates):
 # POST-Endpunkt für den Empfang der Bilder
 @app.post("/upload/")
 async def upload_file(plan_image: UploadFile = File(...), verzeichnis_image: UploadFile = File(...)):
-    print("Received request to upload files.")
-    # Empfange die Bilddaten als Bytes und dekodiere sie
-    plan_bytes = await plan_image.read()
-    verzeichnis_bytes = await verzeichnis_image.read()
+    logger.info("Dateien zum Upload empfangen")
+    try:
+        plan_bytes = await plan_image.read()
+        verzeichnis_bytes = await verzeichnis_image.read()
+        logger.info("Bilder erfolgreich geladen")
 
-    # Lese die Bytes in ein OpenCV-Bild
-    plan_image_cv = cv2.imdecode(np.frombuffer(plan_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
-    verzeichnis_image_cv = cv2.imdecode(np.frombuffer(verzeichnis_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
+        # Lese die Bytes in ein OpenCV-Bild
+        plan_image_cv = cv2.imdecode(np.frombuffer(plan_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
+        verzeichnis_image_cv = cv2.imdecode(np.frombuffer(verzeichnis_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
 
-    # Verarbeite die Bilder
-    bounding_boxes = detect_symbols_with_balanced_filtering(verzeichnis_image_cv)
-    templates = []
+        logger.info("Bilder erfolgreich in OpenCV-Format konvertiert")
 
-    for box in bounding_boxes:
-        result = classify_symbol_with_openai_from_image(verzeichnis_image_cv, box)
-        if result["entscheidung"] == "verwenden":
-            x, y, w, h = box
-            template = verzeichnis_image_cv[y:y+h, x:x+w]
-            templates.append(template)
+        # Weitere Verarbeitung...
+        bounding_boxes = detect_symbols_with_balanced_filtering(verzeichnis_image_cv)
+        logger.info(f"Anzahl der erkannten Bounding-Boxen: {len(bounding_boxes)}")
 
-    # Starte das Matching des Plans auf die Templates
-    matches = match_template_on_large_plan(plan_image_cv, templates)
+        templates = []
+        for box in bounding_boxes:
+            result = classify_symbol_with_openai_from_image(verzeichnis_image_cv, box)
+            if result["entscheidung"] == "verwenden":
+                x, y, w, h = box
+                template = verzeichnis_image_cv[y:y+h, x:x+w]
+                templates.append(template)
 
-    # Ergebnisse zurückgeben
-    return {"status": "success", "matches": matches}
+        logger.info(f"{len(templates)} Templates werden verwendet")
 
+        # Starte das Matching des Plans auf die Templates
+        matches = match_template_on_large_plan(plan_image_cv, templates)
+        logger.info(f"Anzahl der gefundenen Übereinstimmungen: {len(matches)}")
 
-    # Ergebnisse zurückgeben
-    return {"status": "success", "matches": matches}
+        # Ergebnisse zurückgeben
+        return {"status": "success", "matches": matches}
+    
+    except Exception as e:
+        logger.error(f"Fehler beim Verarbeiten der Datei: {str(e)}")
+        raise e
