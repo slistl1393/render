@@ -31,7 +31,6 @@ def detect_symbols_with_balanced_filtering(image):
     return bounding_boxes
 
 def classify_symbol_with_openai_from_image(image, box):
-    print(f"Verarbeite Symbol bei Box: {box}")
     x, y, w, h = box
     symbol = image[y:y+h, x:x+w]
     img_base64 = encode_image_to_base64(symbol)
@@ -39,32 +38,33 @@ def classify_symbol_with_openai_from_image(image, box):
     # OCR-Erkennung des Textes in der Nähe des Symbols
     text_area = image[y:y+h, x+w:x+w+2000]
     ocr_text = pytesseract.image_to_string(text_area).strip()
-    print(f"Erkannter OCR-Text: {ocr_text}")
 
     # OpenAI API Anfrage
+    prompt = f'''
+    Du bekommst links ein Symbolbild und rechts angrenzenden Beschreibungstext.
+    Verwende das Symbol nur, wenn der Text "Egcobox" oder "Isokorb" enthält.
+
+    Beschreibungstext:
+    """{ocr_text}"""
+
+    Antworte mit: "verwenden" oder "ignorieren"
+    '''
+
+    # Achte darauf, dass alle Zeilen im richtigen Block eingezogen sind
     response = openai.ChatCompletion.create(
-        model="gpt-4",  # oder ein anderes Chat-Modell
+        model="gpt-4",  # oder das passende Modell
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": f'''
-            Du bekommst links ein Symbolbild und rechts angrenzenden Beschreibungstext.
-            Verwende das Symbol nur, wenn der Text "Egcobox" oder "Isokorb" enthält.
-
-            Beschreibungstext:
-            """{ocr_text}"""
-
-            Antworte mit: "verwenden" oder "ignorieren"
-            '''},
+            {"role": "user", "content": prompt},
         ],
         max_tokens=10
     )
 
-        decision = response.choices[0].text.strip().lower()
-        print(f"OpenAI Entscheidung: {decision}")
-        return {"entscheidung": decision, "ocr_text": ocr_text}
-    except Exception as e:
-        print(f"Fehler bei der OpenAI API: {e}")
-        return {"entscheidung": "error", "ocr_text": ocr_text}
+    # Hier muss die Einrückung mit der vorherigen Codezeile übereinstimmen
+    decision = response.choices[0].message["content"].strip().lower()
+
+    return {"entscheidung": decision, "ocr_text": ocr_text}
+
 
 def encode_image_to_base64(image):
     _, buffer = cv2.imencode(".png", image)
