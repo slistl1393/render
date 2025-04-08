@@ -42,22 +42,23 @@ def classify_symbol_with_openai_from_image(image, box):
     print(f"Erkannter OCR-Text: {ocr_text}")
 
     # OpenAI API Anfrage
-    prompt = f'''
-    Du bekommst links ein Symbolbild und rechts angrenzenden Beschreibungstext.
-    Verwende das symbol nur, wenn der Text "Egcobox" oder "Isokorb" enthält.
+    response = openai.ChatCompletion.create(
+        model="gpt-4",  # oder ein anderes Chat-Modell
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": f'''
+            Du bekommst links ein Symbolbild und rechts angrenzenden Beschreibungstext.
+            Verwende das Symbol nur, wenn der Text "Egcobox" oder "Isokorb" enthält.
 
-    Beschreibungstext:
-    """{ocr_text}"""
+            Beschreibungstext:
+            """{ocr_text}"""
 
-    Antworte mit: "verwenden" oder "ignorieren"
-    '''
+            Antworte mit: "verwenden" oder "ignorieren"
+            '''},
+        ],
+        max_tokens=10
+    )
 
-    try:
-        response = openai.Completion.create(
-            model="gpt-4",
-            prompt=prompt,
-            max_tokens=10
-        )
         decision = response.choices[0].text.strip().lower()
         print(f"OpenAI Entscheidung: {decision}")
         return {"entscheidung": decision, "ocr_text": ocr_text}
