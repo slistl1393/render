@@ -144,35 +144,30 @@ async def upload_file(plan_image: UploadFile = File(...), verzeichnis_image: Upl
         verzeichnis_bytes = await verzeichnis_image.read()
         print("✅ Bilder empfangen")
 
-        # Hier folgen deine weiteren Schritte (z. B. Symbolerkennung etc.)
-        # und an jedem Schritt so etwas einbauen:
+        # Lade Bild als OpenCV
+        plan_image_cv = cv2.imdecode(np.frombuffer(plan_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
+        verzeichnis_image_cv = cv2.imdecode(np.frombuffer(verzeichnis_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
+
         print("▶️ Starte Symbolerkennung...")
+        bounding_boxes = detect_symbols_with_balanced_filtering(verzeichnis_bytes)
+        print(f"🔍 Gefundene Symbole: {len(bounding_boxes)}")
 
-        # ...
+        templates = []
+        for box in bounding_boxes:
+            print(f"🔁 Verarbeite Symbol: {box}")
+            result = classify_symbol_with_openai_from_image(verzeichnis_image_cv, box)
+            print(f"📋 Entscheidung: {result['entscheidung']}")
+            if result["entscheidung"] == "verwenden":
+                x, y, w, h = box
+                template = verzeichnis_image_cv[y:y+h, x:x+w]
+                templates.append(template)
 
-        return {"status": "success", "matches": []}  # Beispielantwort
+        print("🔄 Starte Matching...")
+        matches = match_template_on_large_plan(plan_image_cv, templates)
+
+        print(f"✅ Matching abgeschlossen mit {len(matches)} Treffern")
+        return {"status": "success", "matches": matches}
     except Exception as e:
         print(f"❌ Fehler im Backend: {e}")
         return {"status": "error", "message": str(e)}
-
-
-    plan = cv2.imdecode(np.frombuffer(plan_bytes, np.uint8), cv2.IMREAD_COLOR)
-    verzeichnis = cv2.imdecode(np.frombuffer(verzeichnis_bytes, np.uint8), cv2.IMREAD_COLOR)
-
-    boxes = detect_symbols_with_balanced_filtering(verzeichnis)
-    templates = []
-    for idx, box in enumerate(boxes):
-        decision = classify_symbol_with_openai_from_image(verzeichnis, box)
-        if decision == "verwenden":
-            x, y, w, h = box
-            temp = verzeichnis[y:y+h, x:x+w]
-            templates.append((f"template_{idx}", temp))
-
-    all_matches = []
-    for name, template in templates:
-        matches = match_template(plan, template, name)
-        all_matches.extend(matches)
-
-    final_matches = non_max_suppression_per_template(all_matches)
-    return {"matches": final_matches, "count": len(final_matches)}
 
