@@ -84,6 +84,7 @@ def match_template_on_large_plan(plan_image, templates):
 # POST-Endpunkt für den Empfang der Bilder
 @app.post("/upload/")
 async def upload_file(plan_image: UploadFile = File(...), verzeichnis_image: UploadFile = File(...)):
+    print("Received request to upload files.")
     # Empfange die Bilddaten als Bytes und dekodiere sie
     plan_bytes = await plan_image.read()
     verzeichnis_bytes = await verzeichnis_image.read()
