@@ -13,8 +13,6 @@ from collections import defaultdict, Counter
 # FastAPI App initialisieren
 app = FastAPI()
 
-import os
-
 # Zugriff auf die Umgebungsvariablen
 openai_api_key = os.getenv("OPENAI_API_KEY")
 github_token = os.getenv("GITHUB_TOKEN")
@@ -22,7 +20,6 @@ github_token = os.getenv("GITHUB_TOKEN")
 # Überprüfen, ob die Umgebungsvariablen gesetzt sind
 if openai_api_key is None or github_token is None:
     raise ValueError("API-Keys sind nicht korrekt gesetzt!")
-
 
 # Funktion zum Bildverarbeiten und Erkennen von Symbolen
 def detect_symbols_with_balanced_filtering(image):
@@ -104,6 +101,10 @@ async def upload_file(plan_image: UploadFile = File(...), verzeichnis_image: Upl
 
     # Starte das Matching des Plans auf die Templates
     matches = match_template_on_large_plan(plan_image_cv, templates)
+
+    # Ergebnisse zurückgeben
+    return {"status": "success", "matches": matches}
+
 
     # Ergebnisse zurückgeben
     return {"status": "success", "matches": matches}
