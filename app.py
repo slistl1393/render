@@ -137,9 +137,24 @@ def non_max_suppression_per_template(matches, iou_threshold=0.3):
 
 # 🔹 FastAPI-Endpunkt
 @app.post("/upload/")
-async def upload(plan_image: UploadFile = File(...), verzeichnis_image: UploadFile = File(...)):
-    plan_bytes = await plan_image.read()
-    verzeichnis_bytes = await verzeichnis_image.read()
+async def upload_file(plan_image: UploadFile = File(...), verzeichnis_image: UploadFile = File(...)):
+    try:
+        print("➡️ Anfrage empfangen")
+        plan_bytes = await plan_image.read()
+        verzeichnis_bytes = await verzeichnis_image.read()
+        print("✅ Bilder empfangen")
+
+        # Hier folgen deine weiteren Schritte (z. B. Symbolerkennung etc.)
+        # und an jedem Schritt so etwas einbauen:
+        print("▶️ Starte Symbolerkennung...")
+
+        # ...
+
+        return {"status": "success", "matches": []}  # Beispielantwort
+    except Exception as e:
+        print(f"❌ Fehler im Backend: {e}")
+        return {"status": "error", "message": str(e)}
+
 
     plan = cv2.imdecode(np.frombuffer(plan_bytes, np.uint8), cv2.IMREAD_COLOR)
     verzeichnis = cv2.imdecode(np.frombuffer(verzeichnis_bytes, np.uint8), cv2.IMREAD_COLOR)
