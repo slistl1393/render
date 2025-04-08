@@ -48,11 +48,15 @@ def classify_symbol_with_openai_from_image(image, box):
     Antworte mit: "verwenden" oder "ignorieren"
     '''
 
-    response = openai.Completion.create(
-        model="gpt-4",
-        prompt=prompt,
+    response = openai.ChatCompletion.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt},
+        ],
         max_tokens=10
     )
+
 
     decision = response.choices[0].text.strip().lower()
     return {"entscheidung": decision, "ocr_text": ocr_text}
